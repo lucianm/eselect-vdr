@@ -8,6 +8,27 @@ MAINTAINER="vdr@gentoo.org"
 
 inherit multilib
 
+using_argsdir() {
+	# we are NOT using ARGSDIR if gentoo-vdr-scripts does NOT contain this file:
+	local argsdir_helper="/usr/share/vdr/inc/argsdir-functions.sh"
+	if [[ -e "${argsdir_helper}" ]]; then
+		# source the helper code only once, for further usage
+		if [[ -z "${helper_sourced}" ]]; then
+			source "${argsdir_helper}"
+			helper_sourced="yes"
+		fi
+	else
+		return 1
+	fi
+	
+	# we are NOT using ARGSDIR if vdrcm is NOT installed
+	local vdrcm_bin=$(which vdrcm)
+	[[ -x "${vdrcm_bin}" ]] || return 1
+
+	# all well, we're using ARGSDIR
+	return 0
+}
+
 find_plugins() {
 	local plugins plugin f plugindir="${EROOT}/usr/$(get_libdir)/vdr/plugins"
 
@@ -25,20 +46,27 @@ find_plugins() {
 show_enabled_plugins() {
 	local plugins line conffile="${EROOT}/etc/conf.d/vdr.plugins"
 
-	exec 3<${conffile}
-	while read plugin <&3; do
-		[ "${plugin}" = "" ] && continue
-		[ "${plugin#"#"}" != "${plugin}" ] && continue
-		plugins="${plugins}\n${plugin}"
-	done
+	if using_argsdir; then
+		plugins="$(get_configured_plgs)"
+	else
+		exec 3<${conffile}
+		while read plugin <&3; do
+			[ "${plugin}" = "" ] && continue
+			[ "${plugin#"#"}" != "${plugin}" ] && continue
+			plugins="${plugins}\n${plugin}"
+		done
+	fi
 
 	echo -ne ${plugins} | sort -u
 }
 
 is_enabled() {
-	local conffile="${EROOT}/etc/conf.d/vdr.plugins"
-	
-	egrep -q "^${1}\$" "${conffile}" || return 1
+	if using_argsdir; then
+		[[ $(get_configured_plgs) == *"${1}"* ]] || return 1
+	else
+		local conffile="${EROOT}/etc/conf.d/vdr.plugins"
+		egrep -q "^${1}\$" "${conffile}" || return 1
+	fi
 	return 0
 }
 
@@ -109,13 +137,15 @@ describe_enable_options() {
 }
 
 do_enable() {
-	local conffile="${EROOT}/etc/conf.d/vdr.plugins" plugins plugin
-
 	[[ -z ${1} ]] && die -q "You didn't specify any plugins to enable."
 
-	# make sure we have proper permissions
-	[[ -w ${conffile} ]] || \
-		die -q "You don't have permission to write to ${conffile}"
+	if ! using_argsdir; then
+		local conffile="${EROOT}/etc/conf.d/vdr.plugins" plugins plugin
+
+		# make sure we have proper permissions
+		[[ -w ${conffile} ]] || \
+			die -q "You don't have permission to write to ${conffile}"
+	fi
 
 	plugins=( $(find_plugins) )
 
@@ -145,8 +175,12 @@ do_enable() {
 			continue
 		fi
 
-		# finally, add it to conffile
-		echo "${plugin}" >> "${conffile}"
+		if using_argsdir; then
+			vdrcm --enable "${plugin}"
+		else
+			# finally, add it to conffile
+			echo "${plugin}" >> "${conffile}"
+		fi
 	done
 }
 
@@ -166,12 +200,14 @@ describe_disable_options() {
 
 
 do_disable() {
-	local conffile="${EROOT}/etc/conf.d/vdr.plugins" plugins plugin
-
 	[[ -z ${1} ]] && die -q "You didn't specify any plugins to disable"
 
-	[[ -w ${conffile} ]] || \
-		die -q "You don't have permission to write to ${conffile}"
+	if ! using_argsdir; then
+		local conffile="${EROOT}/etc/conf.d/vdr.plugins" plugins plugin
+
+		[[ -w ${conffile} ]] || \
+			die -q "You don't have permission to write to ${conffile}"
+	fi
 
 	plugins=( $(find_plugins) )
 
@@ -195,6 +231,10 @@ do_disable() {
 			continue
 		fi
 
-		sed -e "/^${plugin}\$/d" -i "${conffile}"
+		if using_argsdir; then
+			vdrcm --disable "${plugin}"
+		else
+			sed -e "/^${plugin}\$/d" -i "${conffile}"
+		fi
 	done
 }
