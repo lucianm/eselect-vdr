@@ -1,4 +1,4 @@
-# Copyright 1999-2019 Gentoo Authors
+# Copyright 1999-2020 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 # Author: Matthias Schwarzott <zzam@gentoo.org>
 # Author: Joerg Bornkessel <hd_brummy@gentoo.org>
@@ -9,7 +9,7 @@ MAINTAINER="vdr@gentoo.org"
 inherit multilib
 
 find_plugins() {
-	local plugins plugin f plugindir="${EROOT}/usr/${get_libdir)/vdr/plugins"
+	local plugins plugin f plugindir="${EROOT}/usr/$(get_libdir)/vdr/plugins"
 
 	for f in ${plugindir}/libvdr-*.so* ; do
 		[[ -e ${f} ]] || continue
